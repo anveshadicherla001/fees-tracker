@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Fee Management</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+            font-size: 12px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="number"],
+        input[type="text"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .summary {
+            margin-top: 20px;
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+        }
+        table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 10px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .edit-btn, .delete-btn {
+            padding: 5px 10px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            margin: 6px 0px;
+        }
+        .edit-btn {
+            background-color: #007bff;
+            color: white;
+        }
+        .edit-btn:hover {
+            background-color: #0056b3;
+        }
+        .delete-btn {
+            background-color: #dc3545;
+            color: white;
+        }
+        .delete-btn:hover {
+            background-color: #c82333;
+        }
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 24px;
+            }
+            input[type="number"],
+            input[type="text"],
+            button {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Fee Tracker</h1>
+    <div class="form-group">
+        <label for="studentName">Student Name:</label>
+        <input type="text" id="studentName" required>
+    </div>
+    <div class="form-group">
+        <label for="feeAmount">Fee Amount:</label>
+        <input type="number" id="feeAmount" required>
+    </div>
+    <div class="form-group">
+        <label for="commissionRate">Commission Rate (%):</label>
+        <input type="number" id="commissionRate" required>
+    </div>
+    <button id="addBtn" onclick="addFee()">Add Fee</button>
+
+    <div class="summary">
+        <h2>Summary</h2>
+        <p>Total Fees Collected: <span id="totalFees">0.00</span></p>
+        <p>Total Commission Earned: <span id="totalCommission">0.00</span></p>
+        <p>Net Earnings: <span id="netEarnings">0.00</span></p>
+    </div>
+
+    <h2>Fee Entries</h2>
+    <table id="feeTable">
+        <thead>
+            <tr>
+                <th>Student</th>
+                <th>Fee</th>
+                <th>Commission (%)</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<script>
+    let db;
+
+    // Open (or create) the database
+    const request = indexedDB.open('FeeManagementDB', 1);
+
+    request.onerror = function(event) {
+        console.error('Database error:', event.target.errorCode);
+    };
+
+    request.onsuccess = function(event) {
+        db = event.target.result;
+        loadEntries(); // Load entries after DB is opened successfully
+    };
+
+    request.onupgradeneeded = function(event) {
+        db = event.target.result;
+        const objectStore = db.createObjectStore('feeEntries', { keyPath: 'id', autoIncrement: true });
+        objectStore.createIndex('studentName', 'studentName', { unique: false });
+    };
+
+    function loadEntries() {
+        const transaction = db.transaction(['feeEntries'], 'readonly');
+        const objectStore = transaction.objectStore('feeEntries');
+        const request = objectStore.getAll();
+
+        request.onsuccess = function(event) {
+            const entries = event.target.result;
+            const tbody = document.getElementById('feeTable').querySelector('tbody');
+            tbody.innerHTML = ''; // Clear the table before loading
+
+            entries.forEach(entry => {
+                addRowToTable(entry);
+            });
+            updateTotals();
+        };
+    }
+
+    function addFee() {
+        const studentName = document.getElementById('studentName').value;
+        const feeAmount = parseFloat(document.getElementById('feeAmount').value);
+        const commissionRate = parseFloat(document.getElementById('commissionRate').value);
+
+        if (!studentName || isNaN(feeAmount) || isNaN(commissionRate)) {
+            alert('Please fill in all fields correctly.');
+            return;
+        }
+
+        const commissionAmount = (feeAmount * commissionRate) / 100;
+        const entry = { studentName, feeAmount, commissionRate, commissionAmount };
+
+        const transaction = db.transaction(['feeEntries'], 'readwrite');
+        const objectStore = transaction.objectStore('feeEntries');
+        const request = objectStore.add(entry);
+
+        request.onsuccess = function() {
+            location.reload(); // Reload the page to reflect changes
+        };
+    }
+
+    function addRowToTable(entry) {
+        const tbody = document.getElementById('feeTable').querySelector('tbody');
+        const row = document.createElement('tr');
+
+        row.innerHTML = `
+            <td>${entry.studentName}</td>
+            <td>${entry.feeAmount.toFixed(2)}</td>
+            <td><strong style="font-size: 10px; color:green">${entry.commissionRate.toFixed(2)} %</strong></br><strong>${entry.commissionAmount.toFixed(2)}<strong></td>
+            <td>
+                <button class="edit-btn" onclick="editEntry(${entry.id})">Edit</button>
+                <button class="delete-btn" onclick="deleteEntry(${entry.id})">Delete</button>
+            </td>
+        `;
+
+        tbody.appendChild(row);
+    }
+
+    function editEntry(id) {
+        const transaction = db.transaction(['feeEntries'], 'readonly');
+        const objectStore = transaction.objectStore('feeEntries');
+        const request = objectStore.get(id);
+
+        request.onsuccess = function(event) {
+            const entry = event.target.result;
+            document.getElementById('studentName').value = entry.studentName;
+            document.getElementById('feeAmount').value = entry.feeAmount;
+            document.getElementById('commissionRate').value = entry.commissionRate;
+
+            // Prepare to update the entry
+            document.getElementById('addBtn').onclick = function() {
+                const newName = document.getElementById('studentName').value;
+                const newFeeAmount = parseFloat(document.getElementById('feeAmount').value);
+                const newCommissionRate = parseFloat(document.getElementById('commissionRate').value);
+                const newCommissionAmount = (newFeeAmount * newCommissionRate) / 100;
+
+                const updateTransaction = db.transaction(['feeEntries'], 'readwrite');
+                const updateObjectStore = updateTransaction.objectStore('feeEntries');
+                updateObjectStore.put({ id, studentName: newName, feeAmount: newFeeAmount, commissionRate: newCommissionRate, commissionAmount: newCommissionAmount });
+
+                setTimeout(() => {
+                    location.reload();
+                }, 500);
+            };
+        };
+    }
+
+    function deleteEntry(id) {
+        const transaction = db.transaction(['feeEntries'], 'readwrite');
+        const objectStore = transaction.objectStore('feeEntries');
+        const request = objectStore.delete(id);
+
+        request.onsuccess = function() {
+            location.reload(); // Reload the page to reflect changes
+        };
+    }
+
+    function updateTotals() {
+        const transaction = db.transaction(['feeEntries'], 'readonly');
+        const objectStore = transaction.objectStore('feeEntries');
+        const request = objectStore.getAll();
+
+        request.onsuccess = function(event) {
+            const entries = event.target.result;
+            let totalFees = 0;
+            let totalCommission = 0;
+
+            entries.forEach(entry => {
+                totalFees += entry.feeAmount;
+                totalCommission += entry.commissionAmount;
+            });
+
+            document.getElementById('totalFees').textContent = totalFees.toFixed(2);
+            document.getElementById('totalCommission').textContent = totalCommission.toFixed(2);
+            document.getElementById('netEarnings').textContent = (totalFees - totalCommission).toFixed(2);
+        };
+    }
+
+</script>
+
+</body>
+</html>
